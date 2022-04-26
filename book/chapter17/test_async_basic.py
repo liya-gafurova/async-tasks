@@ -1,6 +1,6 @@
 import time
 
-from book.chapter17.async_async import is_prime
+from book.chapter17.async_basic import is_prime
 
 
 def test_is_prime():
