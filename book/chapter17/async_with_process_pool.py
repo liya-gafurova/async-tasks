@@ -3,6 +3,26 @@ import time
 from concurrent.futures import ProcessPoolExecutor
 from math import sqrt, ceil
 
+"""
+While the output that you receive might be different in the specific times it took to run
+either program, it should be the case that, as we discussed, the asynchronous program
+actually took longer to run than the synchronous (sequential) one. Again, this is because the
+number crunching tasks inside our is_prime() coroutine are blocking, and, instead of
+overlapping these tasks in order to gain additional speed, our asynchronous program
+simply switched between these tasks in its execution. In this case, only responsiveness is
+achieved through asynchronous programming.
+
+However, this does not mean that if your program contains blocking functions,
+asynchronous programming is out of the question. As mentioned previously, all execution
+in an asynchronous program, if not specified otherwise, occurs entirely in the same thread
+and process, and blocking CPU-bound tasks can thus prevent program instructions from
+overlapping each other. However, this is not the case if the tasks are distributed to separate
+threads/processes. In other words, threading and multiprocessing can help asynchronous
+programs with blocking instructions to achieve better execution time.
+
+
+"""
+
 numbers = [9637529763296797, 9637529763296797, 2147483647, 157, 36245623562456347562457]
 
 
@@ -60,3 +80,5 @@ if __name__ == '__main__':
         print(str(e))
     finally:
         loop.close()
+
+
