@@ -80,7 +80,6 @@ if __name__ == '__main__':
         # - возвращает соотвестсвующий  future
         # - блокирует ниженаписанный код до тех пор, пока не будет возвращен результат работы всех корутин
         loop.run_until_complete(main())
-        asyncio.run(main())
 
 
         finish = time.time()
