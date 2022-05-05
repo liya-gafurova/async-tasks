@@ -4,9 +4,28 @@
   <input type="submit" value="Send"/>
 </form>
 
+<form name="join_room">
+  <input type="text" name="room" maxlength="50"/>
+  <input type="submit" value="join"/>
+</form>
+
+<form name="leave_room">
+  <input type="text" name="room" maxlength="50"/>
+  <input type="submit" value="leave"/>
+</form>
+
+
+
 <div>
 <form name="disconnect">
   <input type="submit" value="Disconnect"/>
+</form>
+
+</div>
+
+<div>
+<form name="create_room">
+  <input type="submit" value="Create Room"/>
 </form>
 
 </div>
@@ -20,9 +39,9 @@ let socket = new WebSocket(url);
 
 // отправка сообщения из формы
 document.forms.publish.onsubmit = function() {
-  let outgoingMessage = this.message.value;
 
-  socket.send(outgoingMessage);
+   socket.send(JSON.stringify({'event': "message",
+     "data": {"message": this.message.value}}));
   return false;
 };
 
@@ -30,6 +49,25 @@ document.forms.disconnect.onsubmit = function() {
   socket.close(1000);
   return false;
 };
+
+document.forms.create_room.onsubmit = function() {
+  socket.send(JSON.stringify({"event": "create_room",
+    "data": {"name": "some_name"}}))
+  return false;
+};
+
+document.forms.leave_room.onsubmit = function() {
+  socket.send(JSON.stringify({"event": "leave_room",
+    "data": {"id": this.room.value}}))
+  return false;
+};
+
+document.forms.join_room.onsubmit = function() {
+  socket.send(JSON.stringify({"event": "join_room",
+    "data": {"id": this.room.value}}))
+  return false;
+};
+
 
 // прослушка входящих сообщений
 socket.onmessage = function(event) {
