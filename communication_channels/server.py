@@ -7,11 +7,14 @@ import websockets
 from websockets.legacy.server import WebSocketServerProtocol
 from websockets.exceptions import ConnectionClosedOK
 
+
+from templates import MessagesTemplates
+
 # TODO aiosqlite
 
-CONNECTIONS = {}
+CONNECTIONS = {} # {connection_id: websocket, ...}
 ROOMS = {}  # {"room_id": (connection_id_1, connection_id_2, ...), "rood_id": (...), ...}
-CONNECTIONS_IN_ROOMS = {}
+CONNECTIONS_IN_ROOMS = {}  # {connection_id: room_id, ...}
 
 
 class EventManager:
@@ -36,20 +39,16 @@ class MessagesManager:
         }
 
     async def message_handler(self, connection, data):
-        if connection.id  not in CONNECTIONS_IN_ROOMS.keys():
-            await connection.send("Choose Room Before Creating Messages")
+        if connection.id not in CONNECTIONS_IN_ROOMS.keys():
+            await connection.send(message=MessagesTemplates['personally']['available_rooms']
+                                  .format(rooms_list=list(ROOMS.keys())))
         else:
-            websockets.broadcast(ROOMS[CONNECTIONS_IN_ROOMS[connection.id]],
-                                 json.dumps(data['message']))
-            await asyncio.sleep(0)
+            websockets.broadcast(websockets=ROOMS[CONNECTIONS_IN_ROOMS[connection.id]],
+                                 message=MessagesTemplates['selective']['message_to_room']
+                                 .format(message=json.dumps(data['message']), connection_id=connection.id))
 
 
 class RoomsManager:
-
-    def __int__(self):
-        self._connections = set()
-
-        self.rooms = {}
 
     @property
     def mapping(self):
@@ -66,30 +65,30 @@ class RoomsManager:
         new_room_id = self._create_room_id()
         ROOMS[new_room_id] = set()
 
-        websockets.broadcast(CONNECTIONS.values(), f'New Room Created: {new_room_id}')
-        await connection.send(f'Available rooms: {list(ROOMS.keys())}. Choose on of the rooms for further chatting.')
+        websockets.broadcast(websockets=CONNECTIONS.values(),
+                             message=MessagesTemplates['to_all']['new_room_created']
+                             .format(new_room_id=new_room_id))
 
-        return new_room_id
+        await connection.send(message=MessagesTemplates['personally']['available_rooms']
+                              .format(rooms_list=list(ROOMS.keys())))
 
     async def join_room(self, connection, data):
         ROOMS[data['id']].add(connection)
         CONNECTIONS_IN_ROOMS[connection.id] = data['id']
         await asyncio.sleep(0)
 
-        websockets.broadcast(ROOMS[data['id']], f"New Member ({connection.id}) in Room {data['id']}")
-        return data['id']
+        websockets.broadcast(websockets=ROOMS[data['id']],
+                             message=MessagesTemplates['selective']['new_room_member']
+                             .format(connection_id=connection.id))
 
     async def leave_room(self, connection, data):
         room_id = CONNECTIONS_IN_ROOMS[connection.id]
-        websockets.broadcast(ROOMS[room_id], f"Member ({connection.id}) has left this room.")
-        await asyncio.sleep(0)
+        websockets.broadcast(websockets=ROOMS[room_id],
+                             message=MessagesTemplates['selective']['left_room']
+                             .format(connection_id=connection.id))
 
         ROOMS[room_id].remove(connection)
         CONNECTIONS_IN_ROOMS.pop(connection.id)
-
-
-
-        return room_id
 
 
 event_manager = EventManager(RoomsManager(), MessagesManager())
@@ -99,9 +98,10 @@ async def handler(websocket: WebSocketServerProtocol):
     print(f"New Connection detected: {websocket.id}")
     CONNECTIONS[websocket.id] = websocket
 
-    await websocket.send("You have connected.")
+    await websocket.send(message=MessagesTemplates['personally']['connected'])
 
-    await websocket.send(f'Available rooms: {list(ROOMS.keys())}. Choose on of the rooms for further chatting.')
+    await websocket.send(message=MessagesTemplates['personally']['available_rooms']
+                         .format(rooms_list=list(ROOMS.keys())))
 
     try:
         while True:
@@ -115,21 +115,14 @@ async def handler(websocket: WebSocketServerProtocol):
     except ConnectionClosedOK as disconnected:
         CONNECTIONS.pop(websocket.id)
 
-        websockets.broadcast(CONNECTIONS.items(), f"Disconnected: {websocket.id}")
-
-        print(f"Disconnected: {websocket.id}")
-
-    finally:
-        print("8")
-
 
 async def main():
-    async with websockets.serve(handler, "",
-                                8088):  # handler is a coroutine that manages a connection. When a client connects, websockets calls handler with the connection in argument. When handler terminates, websockets closes the connection.
+    # handler is a coroutine that manages a connection.
+    # When a client connects, websockets calls handler with the connection in argument.
+    # When handler terminates, websockets closes the connection.
+    async with websockets.serve(handler, "", 8088):
         await asyncio.Future()  # run forever ?
 
 
 if __name__ == '__main__':
     asyncio.run(main())
-
-# TODO different URIs
