@@ -1,86 +1,147 @@
 <!doctype html>
-<form name="publish">
-  <input type="text" name="message" maxlength="50"/>
-  <input type="submit" value="Send"/>
-</form>
-
-<form name="join_room">
-  <input type="text" name="room" maxlength="50"/>
-  <input type="submit" value="join"/>
-</form>
-
-<form name="leave_room">
-  <input type="text" name="room" maxlength="50"/>
-  <input type="submit" value="leave"/>
-</form>
-
-
 
 <div>
-<form name="disconnect">
-  <input type="submit" value="Disconnect"/>
-</form>
+  <p>Auth or Register</p>
+    <form name="Auth">
+        <input type="text" name="username" maxlength="10"/>
+        <input type="text" name="password" maxlength="10"/>
+        <input type="submit" value="Auth"/>
+    </form>
+
+    <form name="Register">
+        <input type="text" name="username" maxlength="10"/>
+        <input type="text" name="password" maxlength="10"/>
+        <input type="submit" value="Register"/>
+    </form>
 
 </div>
 
+<hr>
+
 <div>
-<form name="create_room">
-  <input type="submit" value="Create Room"/>
-</form>
+  <p>Rooms Management</p>
+      <form name="create_room">
+        <input type="submit" value="Create Room"/>
+    </form>
+
+    <form name="join_room">
+        <input type="text" name="room" maxlength="50"/>
+        <input type="submit" value="join"/>
+    </form>
+
+    <form name="leave_room">
+        <input type="text" name="room" maxlength="50"/>
+        <input type="submit" value="leave"/>
+    </form>
+
+</div>
+<hr>
+
+<div>
+  <p>Messages</p>
+    <form name="publish">
+        <input type="text" name="message" maxlength="50"/>
+        <input type="submit" value="Send"/>
+    </form>
+
+  <div id="messages">
+
+  </div>
 
 </div>
 
-<div id="messages"></div>
+<hr>
+
+
+<div>
+    <form name="disconnect">
+        <input type="submit" value="Disconnect"/>
+    </form>
+
+
+
+
+</div>
 
 <script>
-let url = 'ws://localhost:8088'
+    let url = 'ws://localhost:8088'
 
-let socket = new WebSocket(url);
+    let socket = new WebSocket(url);
 
-// отправка сообщения из формы
-document.forms.publish.onsubmit = function() {
+    document.forms.Auth.onsubmit = function () {
+        socket.send(JSON.stringify({
+            'event': "auth",
+            "data": {
+                "username": this.username.value,
+                "password": this.password.value
+            }
+        }));
+        return false;
+    };
 
-   socket.send(JSON.stringify({'event': "message",
-     "data": {"message": this.message.value}}));
-  return false;
-};
+    document.forms.Register.onsubmit = function () {
+        socket.send(JSON.stringify({
+            'event': "register",
+            "data": {
+                "username": this.username.value,
+                "password": this.password.value
+            }
+        }));
+        return false;
+    };
 
-document.forms.disconnect.onsubmit = function() {
-  socket.close(1000);
-  return false;
-};
+    // отправка сообщения из формы
+    document.forms.publish.onsubmit = function () {
 
-document.forms.create_room.onsubmit = function() {
-  socket.send(JSON.stringify({"event": "create_room",
-    "data": {"name": "some_name"}}))
-  return false;
-};
+        socket.send(JSON.stringify({
+            'event': "message",
+            "data": {"message": this.message.value}
+        }));
+        return false;
+    };
 
-document.forms.leave_room.onsubmit = function() {
-  socket.send(JSON.stringify({"event": "leave_room",
-    "data": {"id": this.room.value}}))
-  return false;
-};
+    document.forms.disconnect.onsubmit = function () {
+        socket.close(1000);
+        return false;
+    };
 
-document.forms.join_room.onsubmit = function() {
-  socket.send(JSON.stringify({"event": "join_room",
-    "data": {"id": this.room.value}}))
-  return false;
-};
+    document.forms.create_room.onsubmit = function () {
+        socket.send(JSON.stringify({
+            "event": "create_room",
+            "data": {"name": "some_name"}
+        }))
+        return false;
+    };
+
+    document.forms.leave_room.onsubmit = function () {
+        socket.send(JSON.stringify({
+            "event": "leave_room",
+            "data": {"id": this.room.value}
+        }))
+        return false;
+    };
+
+    document.forms.join_room.onsubmit = function () {
+        socket.send(JSON.stringify({
+            "event": "join_room",
+            "data": {"id": this.room.value}
+        }))
+        return false;
+    };
 
 
-// прослушка входящих сообщений
-socket.onmessage = function(event) {
-  let incomingMessage = event.data;
-  showMessage(incomingMessage);
-};
+    // прослушка входящих сообщений
+    socket.onmessage = function (event) {
+        let incomingMessage = event.data;
+        showMessage(incomingMessage);
+    };
 
-socket.onclose = event => console.log(`Closed ${event.code}`);
+    socket.onclose = event => console.log(`Closed ${event.code}`);
 
-// отображение информации в div#messages
-function showMessage(message) {
-  let messageElem = document.createElement('div');
-  messageElem.textContent = message;
-  document.getElementById('messages').prepend(messageElem);
-}
+    // отображение информации в div#messages
+    function showMessage(message) {
+        let messageElem = document.createElement('div');
+        messageElem.textContent = message;
+        document.getElementById('messages').prepend(messageElem);
+    }
 </script>
