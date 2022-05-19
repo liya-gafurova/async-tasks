@@ -41,7 +41,7 @@ class MessagesManager:
         }
 
     async def message_handler(self, connection, data):
-        if connection.id not in CONNECTIONS_IN_ROOMS.keys():
+        if connection not in CONNECTIONS_IN_ROOMS.keys():
             await connection.send(message=MessagesTemplates['personally']['available_rooms']
                                   .format(rooms_list=list(ROOMS.keys())))
         else:
@@ -74,7 +74,6 @@ class AuthManager:
 
         return authenticated
 
-    # TODO no empty username / password allowed
     async def register_handler(self, connection, data):
         registered = False
         user_in_db = await crud_users.get_by_username(database, data['username'])
