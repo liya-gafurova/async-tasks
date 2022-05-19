@@ -13,6 +13,9 @@ from communication_channels.templates import MessagesTemplates
 from communication_channels.utils import hash_password
 from models import database, crud_messages, crud_users, crud_rooms
 
+CONNECTIONS = dict()  # {connection_id: {user: username, connection: connection}, ...}
+CONNECTIONS_IN_ROOMS = dict()  # {room_id: (connection1, connection2, ...), ...}
+
 
 class EventManager:
 
@@ -48,7 +51,6 @@ class MessagesManager:
 
 
 class AuthManager:
-
     EVENTS = ('auth', 'register')
 
     @property
@@ -72,22 +74,23 @@ class AuthManager:
 
         return authenticated
 
-
+    # TODO no empty username / password allowed
     async def register_handler(self, connection, data):
         registered = False
         user_in_db = await crud_users.get_by_username(database, data['username'])
 
         if user_in_db and bcrypt.checkpw(data['password'].encode('utf-8'), user_in_db['password']):
-            await connection.send(message=MessagesTemplates['personally']['register_registered'].format(username=data['username']))
+            await connection.send(
+                message=MessagesTemplates['personally']['register_registered'].format(username=data['username']))
             registered = True
             return registered
 
         elif not user_in_db:
             try:
                 res = await crud_users.create(database, {"id": str(connection.id),
-                                                   "username": data['username'],
-                                                    "is_active": True,
-                                                   "password": hash_password(data['password'])})
+                                                         "username": data['username'],
+                                                         "is_active": True,
+                                                         "password": hash_password(data['password'])})
                 registered = True if res else False
 
             except sqlite3.IntegrityError:
@@ -95,6 +98,7 @@ class AuthManager:
                 registered = False
 
         return registered
+
 
 class RoomsManager:
 
@@ -111,32 +115,65 @@ class RoomsManager:
 
     async def create_room(self, connection, data):
         new_room_id = self._create_room_id()
-        ROOMS[new_room_id] = set()
 
-        websockets.broadcast(websockets=CONNECTIONS.values(),
-                             message=MessagesTemplates['to_all']['new_room_created']
-                             .format(new_room_id=new_room_id))
+        user = await crud_users.get_by_username(database, CONNECTIONS[connection.id]['username'])
 
-        await connection.send(message=MessagesTemplates['personally']['available_rooms']
-                              .format(rooms_list=list(ROOMS.keys())))
+        try:
+
+            new_room = await crud_rooms.create(database, {"id": new_room_id, "name": data['name'], "creator": user['id']})
+
+
+
+            all_rooms = await crud_rooms.get_all(database)
+
+            websockets.broadcast(websockets=[conn['connection'] for conn in CONNECTIONS.values()],
+                                 message=MessagesTemplates['to_all']['new_room_created']
+                                 .format(new_room_name=data['name']))
+
+            await connection.send(message=MessagesTemplates['personally']['available_rooms']
+                                  .format(rooms_list=[room[1] for room in all_rooms]))
+
+            CONNECTIONS_IN_ROOMS[data['name']] = set()
+
+            print(CONNECTIONS_IN_ROOMS)
+        except sqlite3.IntegrityError as e:
+            await connection.send(message=MessagesTemplates['personally']['repeated_room_name'])
+
 
     async def join_room(self, connection, data):
-        ROOMS[data['id']].add(connection)
-        CONNECTIONS_IN_ROOMS[connection.id] = data['id']
-        await asyncio.sleep(0)
+        room_name = data['name']
 
-        websockets.broadcast(websockets=ROOMS[data['id']],
-                             message=MessagesTemplates['selective']['new_room_member']
-                             .format(connection_id=connection.id))
+        if CONNECTIONS_IN_ROOMS.get(room_name) and connection in CONNECTIONS_IN_ROOMS[room_name]:
+
+            await connection.send(message=MessagesTemplates['personally']['already_in_room'])
+
+        else:
+            if not CONNECTIONS_IN_ROOMS.get(room_name):
+                CONNECTIONS_IN_ROOMS[room_name] = set()
+
+            CONNECTIONS_IN_ROOMS[room_name].add(connection)
+
+            await asyncio.sleep(0)
+
+            websockets.broadcast(websockets=list(CONNECTIONS_IN_ROOMS[room_name]),
+                                 message=MessagesTemplates['selective']['new_room_member']
+                                 .format(connection_id=connection.id))
+
+        print(CONNECTIONS_IN_ROOMS)
 
     async def leave_room(self, connection, data):
-        room_id = CONNECTIONS_IN_ROOMS[connection.id]
-        websockets.broadcast(websockets=ROOMS[room_id],
-                             message=MessagesTemplates['selective']['left_room']
-                             .format(connection_id=connection.id))
+        room_id = data['name']
 
-        ROOMS[room_id].remove(connection)
-        CONNECTIONS_IN_ROOMS.pop(connection.id)
+        if connection not in CONNECTIONS_IN_ROOMS[room_id]:
+            await connection.send(message=MessagesTemplates['personally']['already_left_room'])
+        else:
+
+            websockets.broadcast(websockets=list(CONNECTIONS_IN_ROOMS[room_id]),
+                                 message=MessagesTemplates['selective']['left_room']
+                                 .format(connection_id=connection.id))
+            CONNECTIONS_IN_ROOMS[room_id].remove(connection)
+
+        print(CONNECTIONS_IN_ROOMS)
 
 
 event_manager = EventManager(RoomsManager(), MessagesManager(), AuthManager())
@@ -146,6 +183,7 @@ event_manager = EventManager(RoomsManager(), MessagesManager(), AuthManager())
 async def handler(websocket: WebSocketServerProtocol):
     print(f"New Connection detected: {websocket.id}")
     authenticated_or_registered = False
+    username = None
 
     await websocket.send(message=MessagesTemplates['personally']['register_or_auth'])
 
@@ -156,16 +194,20 @@ async def handler(websocket: WebSocketServerProtocol):
         await asyncio.sleep(0)
 
         if event['event'] in event_manager.auth_manager.EVENTS:
-            authenticated_or_registered = await event_manager.get_handler(event['event'])(connection=websocket, data=event['data'])
+            authenticated_or_registered = await event_manager.get_handler(event['event'])(connection=websocket,
+                                                                                          data=event['data'])
+            username = event['data']["username"]
         else:
             await websocket.send(message=MessagesTemplates['personally']['register_or_auth'])
 
+    CONNECTIONS[websocket.id] = {"connection": websocket, "username": username}
 
     await websocket.send(message=MessagesTemplates['personally']['connected'])
 
     available_rooms = await crud_rooms.get_all(database)
+    print(available_rooms)
     await websocket.send(message=MessagesTemplates['personally']['available_rooms']
-                         .format(rooms_list=[idx for idx in available_rooms['id']]))
+                         .format(rooms_list=[room[1] for room in available_rooms]))
 
     try:
         while True:
@@ -178,6 +220,8 @@ async def handler(websocket: WebSocketServerProtocol):
 
     except ConnectionClosedOK as disconnected:
         CONNECTIONS.pop(websocket.id)
+        print(f"Connection ({websocket.id}) disconnected.")
+        print(CONNECTIONS)
 
 
 async def main():

@@ -21,16 +21,18 @@ Users = sqlalchemy.Table(
     'users',
     metadata,
     sqlalchemy.Column('id', sqlalchemy.String, primary_key=True),
-    sqlalchemy.Column('username', String, unique=True),
-    sqlalchemy.Column('password', String),
+    sqlalchemy.Column('username', String, unique=True, nullable=False),
+    sqlalchemy.Column('password', String, nullable=False),
     sqlalchemy.Column('is_active', Boolean),
 )
+
 
 Rooms = sqlalchemy.Table(
     'rooms',
     metadata,
     sqlalchemy.Column('id', sqlalchemy.String, primary_key=True),
-    sqlalchemy.Column('name', sqlalchemy.String)
+    sqlalchemy.Column('name', sqlalchemy.String, unique=True),
+    sqlalchemy.Column('creator', String, ForeignKey('users.id'))
 
 )
 
@@ -38,7 +40,7 @@ Messages = sqlalchemy.Table(
     'messages',
     metadata,
     Column("id", String, primary_key=True),
-    Column("user_id", String, ForeignKey('users.id')),
+    Column("connection_id", String, ForeignKey('users.id')),
     Column("room_id", String, ForeignKey('rooms.id')),
 
     Column("text", String),
@@ -83,9 +85,19 @@ class CRUDUsers(CRUDBase):
         row = await db.fetch_one(query=query)
         return row
 
+
+class CRUDRooms(CRUDBase):
+    async def get_by_name(self, db, name: str):
+        query = self.model.select().where(self.model.c.name == name)
+        row = await db.fetch_one(query=query)
+        return row
+
+
 crud_users = CRUDUsers(Users)
-crud_rooms = CRUDBase(Rooms)
+# crud_connections = CRUDBase(Connections)
+crud_rooms = CRUDRooms(Rooms)
 crud_messages = CRUDBase(Messages)
+
 
 
 async def test_rooms():

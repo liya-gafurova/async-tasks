@@ -21,6 +21,7 @@
 <div>
   <p>Rooms Management</p>
       <form name="create_room">
+          <input type="text" name="name" maxlength="50"/>
         <input type="submit" value="Create Room"/>
     </form>
 
@@ -108,7 +109,7 @@
     document.forms.create_room.onsubmit = function () {
         socket.send(JSON.stringify({
             "event": "create_room",
-            "data": {"name": "some_name"}
+            "data": {"name": this.name.value}
         }))
         return false;
     };
@@ -116,7 +117,7 @@
     document.forms.leave_room.onsubmit = function () {
         socket.send(JSON.stringify({
             "event": "leave_room",
-            "data": {"id": this.room.value}
+            "data": {"name": this.room.value}
         }))
         return false;
     };
@@ -124,7 +125,7 @@
     document.forms.join_room.onsubmit = function () {
         socket.send(JSON.stringify({
             "event": "join_room",
-            "data": {"id": this.room.value}
+            "data": {"name": this.room.value}
         }))
         return false;
     };
