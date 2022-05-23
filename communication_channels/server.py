@@ -4,13 +4,12 @@ import secrets
 import sqlite3
 from typing import Callable
 
-import bcrypt
 import websockets
 from websockets.legacy.server import WebSocketServerProtocol
 from websockets.exceptions import ConnectionClosedOK
 
 from communication_channels.templates import MessagesTemplates
-from communication_channels.utils import hash_password
+from communication_channels.utils import hash_password, check_password, generate_key
 from models import database, crud_messages, crud_users, crud_rooms
 
 CONNECTIONS = dict()  # {connection_id: {user: username, connection: connection}, ...}
@@ -41,13 +40,26 @@ class MessagesManager:
         }
 
     async def message_handler(self, connection, data):
-        if connection not in CONNECTIONS_IN_ROOMS.keys():
+        print(CONNECTIONS[connection.id]['username'])
+        print(data['message'])
+
+        user = await crud_users.get_by_username(database, CONNECTIONS[connection.id]['username'])
+        room = await crud_rooms.get_by_name(database, data['room'])
+        username = user[1]
+
+        all_rooms = await crud_rooms.get_all(database)
+
+        if connection not in CONNECTIONS_IN_ROOMS[data['room']]:
             await connection.send(message=MessagesTemplates['personally']['available_rooms']
-                                  .format(rooms_list=list(ROOMS.keys())))
+                                  .format(rooms_list=[room[1] for room in all_rooms]))
         else:
-            websockets.broadcast(websockets=ROOMS[CONNECTIONS_IN_ROOMS[connection.id]],
+            await crud_messages.create(database, {"id": generate_key(),
+                                                  "user_id": user[0],
+                                                  "room_id": room[0],
+                                                  "text": data['message']})
+            websockets.broadcast(websockets=CONNECTIONS_IN_ROOMS[data['room']],
                                  message=MessagesTemplates['selective']['message_to_room']
-                                 .format(message=json.dumps(data['message']), connection_id=connection.id))
+                                 .format(message=json.dumps(data['message']), connection_id=username))
 
 
 class AuthManager:
@@ -65,7 +77,7 @@ class AuthManager:
 
         user_in_db = await crud_users.get_by_username(database, data['username'])
 
-        if user_in_db and bcrypt.checkpw(data['password'].encode('utf-8'), user_in_db['password']):
+        if user_in_db and check_password(data['password'], user_in_db['password']):
             await connection.send(message=MessagesTemplates['personally']['successfully_auth'])
             authenticated = True
 
@@ -78,7 +90,7 @@ class AuthManager:
         registered = False
         user_in_db = await crud_users.get_by_username(database, data['username'])
 
-        if user_in_db and bcrypt.checkpw(data['password'].encode('utf-8'), user_in_db['password']):
+        if user_in_db and check_password(data['password'], user_in_db['password']):
             await connection.send(
                 message=MessagesTemplates['personally']['register_registered'].format(username=data['username']))
             registered = True
@@ -109,19 +121,15 @@ class RoomsManager:
             "leave_room": self.leave_room,
         }
 
-    def _create_room_id(self):
-        return secrets.token_hex(nbytes=16)
-
     async def create_room(self, connection, data):
-        new_room_id = self._create_room_id()
+        new_room_id = generate_key()
 
         user = await crud_users.get_by_username(database, CONNECTIONS[connection.id]['username'])
 
         try:
 
-            new_room = await crud_rooms.create(database, {"id": new_room_id, "name": data['name'], "creator": user['id']})
-
-
+            new_room = await crud_rooms.create(database,
+                                               {"id": new_room_id, "name": data['name'], "creator": user['id']})
 
             all_rooms = await crud_rooms.get_all(database)
 
@@ -138,9 +146,11 @@ class RoomsManager:
         except sqlite3.IntegrityError as e:
             await connection.send(message=MessagesTemplates['personally']['repeated_room_name'])
 
-
     async def join_room(self, connection, data):
         room_name = data['name']
+        room = await crud_rooms.get_by_name(database, room_name)
+        username = CONNECTIONS[connection.id]['username']
+        user = await crud_users.get_by_username(database, username)
 
         if CONNECTIONS_IN_ROOMS.get(room_name) and connection in CONNECTIONS_IN_ROOMS[room_name]:
 
@@ -154,14 +164,26 @@ class RoomsManager:
 
             await asyncio.sleep(0)
 
+            last_messages = await crud_messages.get_paginated(database, room[0], 0, 5)
+            for message in last_messages[-1::-1]:
+                await connection.send(message=MessagesTemplates['selective']['message_to_room']
+                                      .format(connection_id=message[6], message=message[3]))
+
+            message = MessagesTemplates['selective']['new_room_member'].format(connection_id=username)
             websockets.broadcast(websockets=list(CONNECTIONS_IN_ROOMS[room_name]),
-                                 message=MessagesTemplates['selective']['new_room_member']
-                                 .format(connection_id=connection.id))
+                                 message=message)
+            await crud_messages.create(database, {"id": generate_key(),
+                                                  "user_id": user[0],
+                                                  "room_id": room[0],
+                                                  "text": message})
+
 
         print(CONNECTIONS_IN_ROOMS)
 
     async def leave_room(self, connection, data):
         room_id = data['name']
+
+        username = CONNECTIONS[connection.id]['username']
 
         if connection not in CONNECTIONS_IN_ROOMS[room_id]:
             await connection.send(message=MessagesTemplates['personally']['already_left_room'])
@@ -169,7 +191,7 @@ class RoomsManager:
 
             websockets.broadcast(websockets=list(CONNECTIONS_IN_ROOMS[room_id]),
                                  message=MessagesTemplates['selective']['left_room']
-                                 .format(connection_id=connection.id))
+                                 .format(connection_id=username))
             CONNECTIONS_IN_ROOMS[room_id].remove(connection)
 
         print(CONNECTIONS_IN_ROOMS)

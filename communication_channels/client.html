@@ -96,7 +96,8 @@
 
         socket.send(JSON.stringify({
             'event': "message",
-            "data": {"message": this.message.value}
+            "data": {"message": this.message.value,
+                     "room": document.forms.join_room.room.value}
         }));
         return false;
     };

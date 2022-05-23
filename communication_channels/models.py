@@ -4,7 +4,7 @@ from typing import Any, Dict
 import databases
 import sqlalchemy
 
-from sqlalchemy import DateTime, Column, String, Boolean, ForeignKey, sql
+from sqlalchemy import DateTime, Column, String, Boolean, ForeignKey, sql, select
 
 from communication_channels.utils import hash_password
 
@@ -40,7 +40,7 @@ Messages = sqlalchemy.Table(
     'messages',
     metadata,
     Column("id", String, primary_key=True),
-    Column("connection_id", String, ForeignKey('users.id')),
+    Column("user_id", String, ForeignKey('users.id')),
     Column("room_id", String, ForeignKey('rooms.id')),
 
     Column("text", String),
@@ -93,10 +93,20 @@ class CRUDRooms(CRUDBase):
         return row
 
 
+class CRUDMessages(CRUDBase):
+    async def get_paginated(self, db, room_id: int,  skip: int = 0, limit: int = 5):
+        query = select(self.model, Users).join_from(self.model, Users)\
+            .where(self.model.c.room_id == room_id)\
+            .order_by(self.model.c.created.desc())\
+            .limit(limit)\
+            .offset(skip)
+        rows = await db.fetch_all(query=query)
+        return rows
+
+
 crud_users = CRUDUsers(Users)
-# crud_connections = CRUDBase(Connections)
 crud_rooms = CRUDRooms(Rooms)
-crud_messages = CRUDBase(Messages)
+crud_messages = CRUDMessages(Messages)
 
 
 

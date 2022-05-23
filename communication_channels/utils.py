@@ -1,3 +1,5 @@
+import secrets
+
 import bcrypt
 
 salt = bcrypt.gensalt()
@@ -10,6 +12,9 @@ def hash_password(password: str):
     return hashed
 
 
-w = "eraergstgsrde"
-hashed = hash_password(w)
-print(bcrypt.checkpw("eraergstgsrde".encode("utf-8"), hashed))
+def check_password(password, actual_password_hashed):
+    return bcrypt.checkpw(password.encode("utf-8"), actual_password_hashed)
+
+
+def generate_key():
+    return secrets.token_hex(nbytes=16)
