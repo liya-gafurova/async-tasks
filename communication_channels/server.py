@@ -1,6 +1,5 @@
 import asyncio
 import json
-import secrets
 import sqlite3
 from typing import Callable
 
@@ -128,8 +127,7 @@ class RoomsManager:
 
         try:
 
-            new_room = await crud_rooms.create(database,
-                                               {"id": new_room_id, "name": data['name'], "creator": user['id']})
+            await crud_rooms.create(database, {"id": new_room_id, "name": data['name'], "creator": user['id']})
 
             all_rooms = await crud_rooms.get_all(database)
 
