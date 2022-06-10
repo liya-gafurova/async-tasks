@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Chat</title>
+    </head>
+    <body>
+        <h1>WebSocket Notifications</h1>
+        <h2>Your ID: <span id="ws-id"></span></h2>
+
+        <form action="", onsubmit="ws_connect(event)">
+            <button>Connect</button>
+        </form>
+
+        <form action="" onsubmit="sendMessage(event)">
+            <input type="text" id="user_id"/>
+            <button>Send</button>
+        </form>
+        <ul id='messages'>
+        </ul>
+
+
+
+        <script>
+
+
+            function ws_connect(event){
+                var user_id = this.user_id.value
+
+
+                window.ws = new WebSocket(`ws://localhost:8000/ws/${user_id}`);
+                window.ws.onmessage = function(event) {
+                    var messages = document.getElementById('messages')
+                    var message = document.createElement('li')
+                    var content = document.createTextNode(event.data)
+                    message.appendChild(content)
+                    messages.appendChild(message)
+            };
+
+            };
+
+            function sendMessage(event) {
+                var user_id = this.user_id.value
+                window.ws.send(JSON.stringify({
+                    "user_id": user_id,
+                    "action": "subscribe"
+                }))
+                input.value = ''
+                event.preventDefault()
+            }
+        </script>
+    </body>
+</html>

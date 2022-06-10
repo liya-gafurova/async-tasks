@@ -4,7 +4,7 @@ import databases
 import sqlalchemy
 from sqlalchemy import String, ForeignKey
 
-DATABASE_URL = "sqlite:///./test.db"
+DATABASE_URL = "sqlite:///./anotif.db"
 database = databases.Database(DATABASE_URL)
 
 engine = sqlalchemy.create_engine(
@@ -25,9 +25,10 @@ Tasks = sqlalchemy.Table(
     metadata,
     sqlalchemy.Column('id', sqlalchemy.String, primary_key=True),
     sqlalchemy.Column('user_id', String, ForeignKey('users.id')),
-    sqlalchemy.Column('result', String, unique=True, nullable=False)
+    sqlalchemy.Column('result', String, )
 )
 
+metadata.create_all(engine)
 
 class CRUDBase:
     def __init__(self, model_type):
