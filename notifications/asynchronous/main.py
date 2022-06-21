@@ -11,30 +11,27 @@ from notifications.asynchronous.db import crud_tasks, crud_users, database
 from notifications.utils import generate_key
 
 app = FastAPI()
-WS_CLIENTS = {}  # {"user_id": "client_websocket"}
 
 
 class WSConnectionManager:
     def __init__(self):
         self.active_connections: dict[str, WebSocket] = {}
 
-    async def accept(self, user_id: str, websocket: WebSocket):
-        await websocket.accept()
+    async def register(self, user_id: str, websocket: WebSocket):
         self.active_connections[user_id] = websocket
 
-    def disconnect(self, user_id: str):
-        self.active_connections.remove(user_id)
+    def disconnect(self, user_id: Optional[str]):
+        try:
+            self.active_connections.remove(user_id)
+        except Exception as er:
+            print(er.args)
 
     async def send_personal_message(self, user_id: str, message: str):
         websocket = self.active_connections.get(user_id)
-        await websocket.send(message)
+        await websocket.send_text(message)
 
 
 ws_manager = WSConnectionManager()
-
-
-def get_ws_clients():
-    return WS_CLIENTS
 
 
 class Response(BaseModel):
@@ -87,45 +84,49 @@ async def create_user(user: InUser):
 
 
 @app.post('/process', response_model=Response)
-async def process(obj: LaunchTask, ws_clients=Depends(get_ws_clients)):
+async def process(obj: LaunchTask):
     processing_result_variants = [True, True, True, False, True, True, True, True, False, True]
     processing_result_gotten = random.choice(processing_result_variants)
 
     sleep_secs = obj.sleep if obj.sleep else 5
     await asyncio.sleep(sleep_secs)
 
-    # TODO notify about 'processing' stop
-
     # store to db
     result_id = generate_key()
-    await crud_tasks.create(database, {"id": result_id,
+    created_mount = await crud_tasks.create(database, {"id": result_id,
                                        "user_id": obj.user_id,
                                        "result": str(processing_result_gotten)})
 
-    # TODO send notification
-    print(ws_clients)
-    if ws_clients.get(obj.user_id):
-        ws_clients.get(obj.user_id).send_text(f"You result {result_id} is ready: {processing_result_gotten}")
+    # send notification
+    if created_mount:
+        await ws_manager.send_personal_message(obj.user_id, f"RESULT IS: {str(processing_result_gotten)}")
 
     return Response(result='good')
 
 
-@app.websocket('/ws/{user}')
-async def notify(websocket: WebSocket, user: str):
-    await ws_manager.accept(user, websocket)
+@app.websocket('/ws')
+async def subscribe(websocket: WebSocket):
+
+    await websocket.accept()
+    print(f"new: {websocket}")
+
+    user_id = None
+
     try:
         while True:
-            message = await websocket.receive_text()
-            message_parsed = json.loads(message)
+            message = await websocket.receive_json()
             print(message)
-            action = message_parsed.get('action')
-            if user and action == 'subscribe':
+            user_id = message.get('user_id', None)
+            action = message.get('action', None)
+            print(f"{user_id} -- {action}")
+            if user_id and action == 'subscribe':
+                await ws_manager.register(user_id, websocket)
+                print(ws_manager.active_connections)
+            else:
+                await websocket.send_text("enter user id to get subscribed")
 
-                print(f'connected: {websocket}')
-
-
-    except WebSocketDisconnect:
-
-        ws_manager.disconnect(websocket)
-
-        await ws_manager.broadcast(f"Client #{user} left.")
+    except Exception as err:
+        print(err)
+        print(f"disconnected: {user_id}")
+        ws_manager.disconnect(user_id)
+        print(ws_manager.active_connections)
