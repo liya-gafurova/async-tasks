@@ -1,3 +1,7 @@
 from django.db import models
 
-# Create your models here.
+
+class Task(models.Model):
+    user = models.CharField(max_length=32)
+    result = models.CharField(max_length=100)
+    processing_time = models.IntegerField()

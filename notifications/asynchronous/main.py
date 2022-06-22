@@ -12,7 +12,7 @@ from notifications.utils import generate_key
 
 app = FastAPI()
 
-
+# TODO что-то надо было сделать, но забыло, что именно
 class WSConnectionManager:
     def __init__(self):
         self.active_connections: dict[str, WebSocket] = {}
@@ -125,7 +125,7 @@ async def subscribe(websocket: WebSocket):
             else:
                 await websocket.send_text("enter user id to get subscribed")
 
-    except Exception as err:
+    except WebSocketDisconnect as err:
         print(err)
         print(f"disconnected: {user_id}")
         ws_manager.disconnect(user_id)
